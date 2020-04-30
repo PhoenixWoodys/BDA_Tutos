@@ -1,0 +1,1430 @@
+---
+title: "Introduction à l'analyse Bayésienne de données"
+author: "[Jonathan Deniel](https://www.jonathan-deniel.net) - `r format(Sys.time(), '%d %B %Y')`"
+mail: "deniel.jonathan@gmail.com"
+linkedin: "jdeniel"
+twitter: "DenielJonathan"
+github: "PhoenixWoodys"
+home: "www.jonathan-deniel.net"
+logo: "JD logo.jpg"
+bibliography: bayes_refs.bib 
+output:
+  epuRate::epurate:
+    toc: TRUE
+    number_sections: FALSE
+    code_folding: "show"
+---
+
+<style>
+#TOC {
+  top: 1%;
+  opacity: 0.9;
+}
+#TOC:hover {
+  opacity: 1;
+}
+body {
+text-align: justify;
+font-size: 14pt;
+}
+
+</style>
+
+```{r setup, include=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(epuRate)
+library(rmarkdown)
+library(ggplot2)
+library(ggridges)
+```
+
+
+***
+
+
+# Introduction 
+
+Bienvenue dans cette introduction à l'analyse bayésienne de données. 
+
+Mon objectif est de proposer au fil de mon propre apprentissage, un tutoriel en français, sur la mise en pratique d'une analyse bayésienne de données. 
+
+
+## Pourquoi ce tuto
+
+Depuis quelques mois, je m'intéresse à l'approche bayésienne en statistiques et j'ai noté une pénurie flagrante de cours pratiques en ligne et en français pour le débutant que j'étais.
+
+J'ai donc entrepris de me former par moi-même avec différentes ressources accessibles en anglais et d'essayer de retranscrire ce que j'apprenais au travers de ce type de document.
+
+Il est donc possible que le contenu de ce tuto contienne quelques erreurs, approximations ou manque d'optimisations, n'hésitez pas à me proposer vos suggestions et corrections (les liens de contatct en bas de page) 
+
+## Structure du document
+
+Pour que ce document puisse être compréhensible nous allons progressivement entrer dans la matière avec quelques conceptions plus théoriques dans un premier temps. Puis, le plus rapidement possible, nous allons aborder la mise en pratique de l'analyse sur des données.
+
+Les sources utilisées pour la confection du document seront disposées au fil de son déroulement et récapitulées à la fin. Toutefois, je signale d'ores et déjà que la méthode et le code présentés ici sont principalement issus de l'introduction à l'analyse bayésienne de données de **_Rasmus Bååth_** ( [vidéo 1](https://youtu.be/3OJEae7Qb_o), [vidéo 2](https://youtu.be/mAUwjSo5TJE), [vidéo 3](https://youtu.be/Ie-6H_r7I5A) ). Je les adapte ici avec son aimable accord.
+
+Le langage utilisé ici est R, les librairies auxquelles nous aurons recours seront mentionnées au fil du déroulement du cours. Il ne s'agit donc pas ici d'une introduction au langage R. Le code sera disponible au lien suivant [LIEN].
+
+
+## Thème de l'exercice d'application 
+
+Le contexte actuel de la pandémie Covid-19, bien que très malheureux, nous offre une bonne opportunité de mettre en pratique l'approche bayésienne.
+
+<style>
+div.grey { background-color:#C8C8C8; border-radius: 5px; padding: 20px;}
+</style>
+<div class = "grey">
+**MISE EN GARDE**
+
+Les calculs, modèles et estimations effectuées ici ne sont que des illustations. **IL NE S'AGIT EN AUCUN CAS D'ESTIMATIONS FIABLES**. En effet, déterminer le taux de létalité est très complexe et je n'ai pas la prétention de pouvoir ici en produire une estimation valable. 
+
+Je ne suis ni épidémiologiste, ni statisticien, ni médecin, mon objectif est plutôt d'illustrer au travers de cette situation réelle comment il est possible d'essayer d'appliquer l'approche bayésienne (à un niveau très superficiel).
+</div>
+
+### Un peu de contexte 
+
+Cette pandémie, dans laquelle un virus totalement nouveau se propage au sein de la population mondiale présente de nombreux inconnus et les incertitudes sont très grandes.
+
+Dès le début de l'épidémie, une des principales questions péoccupantes à propos de cette maladie émergente concerne son taux de mortalité.
+
+Cette information est importante car elle permet de nous faire rapidement une idée des conséquences les plus dramatiques que cette maladie peut avoir lorsqu'elle passe de l'épidémie à la pandémie. 
+
+
+Très rapidement après le début de l'épidémie, nous avons commencé à recevoir, notemment en provenance de Chine, des données concernant le nombre de malades identifiés (testés) et le nombre de victimes du nouveau virus. La source actuelle qui fait consensus concernant la collecte l'oganisation et la synthèse de ces informations se trouve ici : [Johns Hopkins University Dashboard](https://gisanddata.maps.arcgis.com/apps/opsdashboard/index.html#/bda7594740fd40299423467b48e9ecf6)
+
+# Analyse bayésienne : Commençons !!
+
+## Problème 
+
+Nous avons donc reçu quotidiennement deux types de chiffres pouvant nous intéresser : le nombre de malades et le nombre de morts. Nous allons chercher à approximer le taux de mortalité virus sur la base des cas identifiés, ce taux est également appelé **taux de létalité par cas** ([source](https://menace-theoriste.fr/ne-soigner-que-ceux-qui-gueriront-seuls-protocole-raoult/)). 
+
+Pour des raisons de facilité, nous allons volontairement laisser de côté le problème du temps entre le test positif à la maladie et la mort du patient et considérer que tout se passe donc comme si nous étions en train d'effectuer régulièrement un tirage dans une urne de malades testés positifs et contenant n% de personnes qui ont succombé au virus.
+
+Notre but est d'estimer ce fameux n% au moyen des données que nous recevons quotidiennement.
+
+## Approche fréquentiste vs Bayésienne
+
+En statistiques il est commun de différencier l'approche fréquentiste et l'approche bayésienne. L'histoire et les détails de ce qui différencie les deux approches étant en dehors du scope de ce document, je me contenterai donc ici de rappeler que les fréquentistes n'explicitent pas l'a priori que nous pouvons avoir concernant le taux de létalité du virus (nous aborderons cette notion un peu plus loin dans le document) et qu'ils recommanderaient probablement dans notre situation, d'attendre d'avoir un nombre suffisant de malades et de victimes pour estimer le taux de létalité.
+
+Les bayésiens de leur côté, feront le postulat que nous n'avons pas nécessairement besoin d'attendre d'avoir une très grande quantité de données pour tenter d'approximer le taux de létalité par cas du virus. Ils ajouteront que nous pouvons, en intégrant les données acquises au fur et à mesure, mettre à jour notre estimation en quantifiant notre niveau de certitude à propos du taux de létalité probable.
+
+Les bayésiens vont donc chercher à estimer, sachant les données disponibles, quelles sont les probabilités que chaque taux de létalité par cas possible soit le taux "réel". 
+L'un des fondements de ce raisonnement est que divers taux de létalité peuvent générer des données similaires à celles que nous obtenons quotidiennement. L'idée est donc de chercher à estimer quels sont les taux qui sont les plus probablement la source de ces données.
+
+Ainsi par exemple, imaginons que nous disposions des données suivantes 
+
+| Jour          | Nouveaux malades | Morts |
+| ------------- |----------------- | ----- |
+| 1             | 100              |     1 |
+| 2             | 175              |     3 |
+| 3             | 80               |     0 |
+
+
+Il est tout à fait possible que le taux soit 0.5%, 1.%, 2%, 3% voire un peu plus, mais il nous apparaît un peu moins probable que le taux soit de 45% bien que cela ne soit pas impossible. Nous avons ici une idée intuitive du raisonnement bayésien : sachant la proportion de morts parmi les nouveaux malades, quel sont LES taux de létalité les plus probables et quels sont les taux les moins probables. Autrement dit quelle est la distribution des probabilités associées aux taux de létalité possibles en considérant nos données.
+
+Les bayésiens évoquent souvent les jeux et les paris pour illustrer leurs propos, ainsi par exemple ils diraient : _"Considérant les données, combien miseriez-vous sur chaque taux de létalité si vous deviez parier ?"_
+
+
+Voici donc notre objectif précisé : **Estimer les probabilités associées aux taux de létalité sachant nos données.**
+
+## La Formule de Bayes 
+
+Ce type de problème n'est pas nouveau, et les premières résolutions remontent à Thomas Bayes et à Pierre Simon Laplace. Ainsi, c'est de cette manière que Laplace fût le premier à déterminer la proportion de filles / garçons chez les nouveaux nés [@McGrayne2012].
+
+La nécessité d'estimer une probabilité à partir d'informations en faible quantité ou incertaines est fréquent, et la communauté des mathématiciens semble aujourd'hui s'accorder sur l'idée que l'utilisation de la formule de Bayes et l'une des meilleures si ce n'est la meilleure manière de procéder pour cela.
+
+### La fameuse formule
+
+<center>
+![*Formule de Bayes*](D:/Jonathan\Lescot\Projets\GT_Statistiques\Bayesianism\Bayesian_Statistics\BDA_fr_tuto\Bayes_formula.png)
+</center>
+
+Vue comme ça, cette formule semble peu parlante (sachez également qu'elle peut s'écrire sous différentes formes). Nous n'allons pas la décrypter en détail ici, nous nous contenterons simplement de noter quelques éléments nécessaires à nous éclairer sur les raisons de l'utilité de cette formule : 
+
+* P(A) signifie probabilité de A
+* \| signifie sachant
+* P(A\|B) signifie donc probabilité de A sachant B
+
+Ces quelques détails fournis nous pouvons constater que la formule permet globalement de connaître la probabilité de A sachant B sur la base de la probabilité de A, de la probabilité de B et de la probabilité de B sachant A. C'est la raison pour laquelle Laplace parlait de probabilité inverses ;)
+
+Si nous remplaçons A par taux de létalité et B par données nous voyons que notre formule nous permet de connaître la probabilité du taux de létalité sachant nos données sur la base de la probabilité des données sachant le taux de létalité. 
+
+Cela peut nous laisser l'impression d'un serpent qui se mord la queue mais en réalité il n'en est rien. 
+Voyons l'illustration suivante présentant une version remaniée de la formule :
+<center>
+![*Formule de Bayes remaniée*](D:/Jonathan\Lescot\Projets\GT_Statistiques\Bayesianism\Bayesian_Statistics\BDA_fr_tuto\Bayes_formula_2.png)
+</center>
+
+Cette version de la formule nous indique simplement que la probabilité d'un taux de létalité sachant nos données est proportionnel au produit de la probabilité des données sachant ce taux et de la probabilité du taux. 
+
+Cette formule indique donc simplement qu'en combinant notre a priori sur le taux de létalité avec la probabilité que nos données puissent être générées dans un monde où un tel taux est vrai nous permet de calculer la probabilité de ce taux sachant nos données, c'est à dire notre a posteriori (pour plus de commodité nous parlerons aussi de prior pour désigner l'a priori et de posterior pour désigner l'a posteriori).
+
+## Ce qu'il faut pour faire une analyse bayésienne de données
+
+Pour faire une analyse de données bayésiennes il faut 3 choses : 
+
+1. Des données (pour nous, le nombre de malades et le nombre de victimes)
+2. Un Prior (a priori)
+3. Un modèle génératif 
+
+## Récolter les données 
+
+Commençons par obtenir des données.
+
+L'une des raisons pour lesquelles notre estimation du taux de létalité par cas ne pourra être qu'approximative tient au fait que nous ne pouvons pas savoir avec exactitude combien de personnes sont contaminées à chaque instant. Aussi nous allons devoir nous contenter des données disponibles, c'est à dire du nombre de gens testés positifs et du nombre de victimes officiellement associées à la maladie. 
+
+De plus, il se trouve que certains pays comme la France, sont confrontés à des contraintes techniques limitant le nombre de tests qu'ils peuvent effectuer. D'autres comme l'Allemagne, mieux équipés, ont pu adopter une politique de dépistage et de test de grande ampleur. Le ratio nombre de victimes / nombre de cas positifs testés est donc probablement plus représentatif de la réalité du taux de létalité du SARS-CoV-2 dans ces pays (nous excluons ici les considérations relatives à la qualité de la prise en charge médicale). Il s'agit là d'une des sources d'information les plus fiables qui soient à notre portée, nous allons donc y avoir recours pour notre analyse.
+
+Nos données proviennent du _European Center for Disease Prevention and Control_ elles sont disponibles au lien suivant : [ECDC Covid-19 data](https://www.ecdc.europa.eu/en/publications-data/download-todays-data-geographic-distribution-covid-19-cases-worldwide)
+
+Ce site officiel de l'Union Européenne nous propose même un morceau de code R qui nous permet de télécharger directement la table des données que nous allons utiliser 
+Il vous suffit simplement d'installer le package R.utils au moyen de la commande suivante : 
+
+install.packages("R.utils")
+
+
+Puis d'éxécuter le code suivant
+<br><br>
+
+```{r}
+# Chargement de la libraire
+library(utils)
+
+# chargement de la table de données depuis le site source
+data <- read.csv("https://opendata.ecdc.europa.eu/covid19/casedistribution/csv", na.strings = "", fileEncoding = "UTF-8-BOM")
+data$dateRep <- as.Date(data$dateRep, format = "%d/%m/%Y")
+```
+<br><br>
+Nos données brutes sont maintenant chargées dans la table "data" dont voici un aperçu :
+
+```{r, echo=FALSE, warning = FALSE}
+library(DT)
+datatable(data=data , rownames = TRUE, filter="bottom", options = list(pageLength = 5, scrollX=T))
+```
+<br><br><br><br>
+Nous constatons que pour chaque jour, pour chaque pays, la colonne "cases" répertorie ne nombre de nouveaux cas identifiés et la colonne "deaths" répertorie le nombre de nouvelles victimes.
+
+Il ne nous reste plus qu'à sélectionner les données qui nous intéressent et à les placer dans une nouvelle table. Nous choisissons de commencer à la date du 12/03/2020 pour la simple raison qu'il s'agit du jour où les premières victimes ont été enregistrées en Allemagne (notons toutefois que nous aurions pu commencer avant).
+<br><br>
+```{r}
+german_data <- subset(data, data$countriesAndTerritories=="Germany" & data$dateRep >="2020-03-12")
+datatable(data=german_data , rownames = TRUE, options = list(pageLength = 5, scrollX=T) )
+```
+<br><br>
+Notre table de données est donc a présent prête !! 
+
+Juste par curiosité, regardons le diagramme en barre de l'évolution du nombre de nouveaux cas (en gris) ainsi que de l'évolution du nombre de nouveaux décès (en rouge). 
+
+
+
+```{r, echo=FALSE, out.width = "100%", fig.align="center", fig.cap='Données Allemandes'}
+german_data <- german_data[order(german_data$dateRep),]
+
+ggplot(german_data, aes(x = dateRep, y = cases)) + 
+  geom_bar(stat= 'identity',fill="grey", alpha=0.6, color="darkgrey")+
+  theme(axis.text.x = element_text(color="black", 
+                           size=8, angle=90))+
+  scale_x_date(date_breaks = "day" , date_labels = "%d/%m/%Y")+
+  geom_bar(stat= 'identity',aes(x=dateRep, y=deaths), 
+           fill="red", alpha=0.8, color="red")+
+  theme(panel.background = element_blank())+
+  xlab('Date') +
+  ylab('Cas / morts') +
+  ggtitle('Nouveaux cas et nouveaux décès par jour en Allemagne')
+```
+
+Comme nous pouvons le constater visuellement, il est probable que le taux de létalité soit faible. 
+
+**Mais l'examen visuel ne nous suffit pas !!!!**
+
+Passons à la délicate question de l'a priori.
+
+## Le problème de l'a priori (prior)
+
+L'a posteriori est ce que nous cherchons à estimer au moyen de nos données, il est donc normal que nous ne le conaissions pas. En revanche, il nous faut un a priori, or comme nous ne connaissons pas a priori le taux de létalité (p(Taux)), l'équation semble impossible.
+
+Cette nécessité d'inclure une probabilité a priori est ennuyeuse, d'autant plus que la fixer arbitrairement reviendrait à introduire une subjectivité potentiellement problématique. 
+
+Cette intrusion potentielle d'éléments subjectifs dans l'estimation est une critique récurente portée à l'encontre de l'approche bayésienne. Pourtant, bien que très fâcheuse, nous pouvons tout à fait nous en accomoder et même tenter de tirer parti de la situation. 
+
+En effet, rien ne nous force à définir cet a priori de manière arbitraire et totalement subjective. Nous pouvons par exemple aller chercher dans la littérature déjà existante des informations concernant les taux de létalité de virus proches et déjà connus. Ce qui déjà en soi est une bonne démarche d'inspection de l'état des connaissances dans le domaine.
+
+Ainsi par exemple selon cette [source (www.pasteur.fr)](https://www.pasteur.fr/en/medical-center/disease-sheets/mers-cov) et cette [source (wikipedia)](https://en.wikipedia.org/wiki/Middle_East_respiratory_syndrome), le taux de létalité du virus MERS-CoV est probablement comprise entre 30% et 40%. Concernant le SARS-CoV-1 cette [source (wikipedia)](https://en.wikipedia.org/wiki/Severe_acute_respiratory_syndrome) nous indique un taux de létalité avoisinant les 11% mais pouvant varier entre 0% et 50%. Par ailleurs, d'autres coronavirus humains sont responsables d'environ 15% de rhumes bénins ordinaires pour lesquels le taux de létalité est très proche de 0% [source (wikipedia)](https://en.wikipedia.org/wiki/Common_cold).
+
+Il semble donc que le taux de létalité des différents virus de cette famille soit très variables, la prudence est donc de mise, nous allons donc considérer que le taux de létalité peut prendre n'importe quelle valeur entre 0 et 100%.
+
+Cette fourchette large de taux possibles ne suffit pas pour définir notre a priori. Il nous faut également penser que pour chaque valeur de taux possible doit être associée une valeur de probabilité. 
+
+Ici nous considérons chaque taux de létalité possible comme une hypothèse à laquelle nous cherchons associer la probabilité a priori qu'elle soit _"vraie"_. Notre a priori doit donc prendre la forme d'une distribution de probabilité.
+
+Comme nous ne sommes pas experts des maladies à coronavirus, il nous est difficile a priori d'estimer si le taux de létalité de cette nouvelle maladie est plus proche de celle du rhume bénin ou de celle du terrible MERS-CoV. Nous pouvons donc supposer dans un premier temps, que chaque taux de létalité possible entre 0 et 100% est équiprobable. Ce type de prior est aussi appelé _a priori non informatif._
+
+Graphiquement nous pouvons représenter cet a priori ainsi :
+
+<center>
+![*Prior Uniforme*](D:/Jonathan\Lescot\Projets\GT_Statistiques\Bayesianism\Bayesian_Statistics\BDA_fr_tuto\Uniform_prior_tuto.png)
+</center>
+
+
+Ceci étant posé, nous pouvons maintenant nous intéresser au modèle génératif.
+
+## Qu'est-ce qu'un modèle génératif ? 
+
+Un modèle génératif c'est n'importe quel type de programme informatique, d'expression mathématique ou d'ensemble de règles que l'on peut alimenter avec une ou des valeurs de paramètres fixées et qui va pouvoir générer des données simulées.
+
+<center>
+![*Principe du modèle génératif*](D:/Jonathan\Lescot\Projets\GT_Statistiques\Bayesianism\Bayesian_Statistics\BDA_fr_tuto\Generative_model_schema.png)
+</center>
+
+Lorsqu'on se trouve dans le cas où le/les paramètres sont connus alors on peut utiliser le modèle génératif pour créer artificiellement des données. Si nous connaissions la valeur du taux de létalité, alors nous pourrions créer au moyen d'un modèle génératif, des données simulées respectant ce taux.
+
+
+### Implémenter un modèle génératif 
+
+Certes nous avons une description très générale du principe du modèle génératif, mais en pratique comment faire ??
+
+Prenons un exemple, illustrons le et implémentons le pour nous en faire une meilleure idée. 
+
+Prenons le cas d'un foyer épidémique du MERS-CoV dont le taux de létalité sous-jacent serait de 30%. Imaginons maintenant que nous voulions simuler une situation où un épidémiologue se rend dans ce foyer épidémique et identifie qu'il comporte 160 malades. Quel nombre de décès pourrions nous envisager ? Bien entendu nous pourrions simplement calculer 30% de 160 malades (i.e. 48 victimes) et nous satifaire du résultat. 
+
+Mais nous savons que 30% est une sorte de valeur de la proportion de morts autour de laquelle notre donnée simulée doit se situer mais, l'aléa fait qu'il ne s'agit pas d'une valeur exacte et absolue en tout temps. Nous allons donc utiliser une distribution de probabilité dont le paramètre sera 30% et qui nous permettra de fabriquer une donnée du nombre de victimes pour 160 malades virtuels. 
+
+Notre modèle génératif va donc implémenter cette distribution de probabilité. Dans notre cas la sortie du modèle génératif doit nous indiquer pour chacun des 160 malades virtuels s'ils sont des victimes ou non. 
+La distribution de probabilité capable de remplir ces critères est **la distribution binomiale.**
+
+Le schéma suivant illustre le process que nous allons mettre en place pour générer une donnée simulée 
+
+<center>
+![Modèle génératif](D:/Jonathan\Lescot\Projets\GT_Statistiques\Bayesianism\Bayesian_Statistics\BDA_fr_tuto\Generative_model_example_case.png)
+</center>
+En pratique le code R pour ce cas particulier de modèle génératif est le suivant :
+```{r}
+victimes_virtuelles <- rbinom(1, size = 160, prob = 0.30)
+victimes_virtuelles
+```
+Si vous exécutez plusieurs fois de suite cette ligne de code vous constaterez qu'a chaque nouvelle exécution le nombre de victimes virtuelles change et gravite plus ou moins autour de la valeur 48. 
+
+Nous avons donc été capable de simuler un nombre de victimes virtuelles sur la base d'un taux de létalité donné.
+
+### Remonter à la valeur de paramètre
+
+Notre problème c'est que ce qui nous intéresse c'est l'exact inverse !! Nous avons des données et nous cherchons à remonter au paramètre de taux de létalité, en d'autres termes plus techniques nous cherchons à faire une inférence bayésienne.
+
+Cette petite vidéo de la chaîne [Hygiène mentale](https://youtu.be/x-2uVNze56s) expose ce même problème avec des lancés de dés. Nous savons qu'un dé a été lancé et qu'il a produit un 6, ce que nous cherchons à savoir : quel type de dé a été lancé ? Est-ce un dé à 4, 6, 8, 12 ou même 20 faces ? Comme pour notre taux de létalité, il faut procéder à une inférence bayésienne pour déterminer quel dé a le plus probablement été lancé.
+
+Nous allons voir que malgré cette difficulté apparente, nous sommes sur le bon chemin pour passer du Prior au Posterior.
+
+
+## Passer du Prior au Posterior
+
+Nous avons défini un Prior, obtenu des données, et implémenté un modèle génératif. Enfin nous pouvons nous attaquer à ce qui nous intéresse vraiment : **déterminer le posterior**, c'est à dire la probabilité de chaque taux de létalité en considérant nos données.
+
+Pour cela nous allons explorer l'algorithme ABC pour **Approximate Bayesian Computation.** 
+
+Il existe de nombreuses manières de passer du prior au posterior en incorporant les données acquises. L'algorithme ABC n'est pas très efficace du point de vue computationnel, mais il est très pratique pour expliquer le principe général que l'on va mettre en oeuvre pour passer du prior au posterior. Nous allons donc le présenter de manière générale et au travers de l'éxécution du code R. Enfin, nous verrons comment effectuer la même opération mais en ayant recours à une méthode algorithmique plus rapide.
+
+
+## L'algorithme ABC 
+
+Dans le principe cet algorithme reprend les différents éléments que nous avons exposés précédemment. 
+
+Illustrons son fonctionnement
+
+
+Étape initiale : 
+
+<center>
+![](D:/Jonathan\Lescot\Projets\GT_Statistiques\Bayesianism\Bayesian_Statistics\BDA_fr_tuto\ABC_step_1.png)
+</center>
+Lors de cette première étape, nous allons tirer au hasard un taux de létalité en suivant la règle que nous avons définie comme a priori : tous les taux entre 0 et 100% sont possibles et équiprobables. Dans notre cas nous avons tiré 20%. 
+
+Nous avons été prendre la première donnée réelle disponible : au premier jour 271 cas ont été déclarés et 1 décès constaté.
+
+Nous utilisons notre modèle génératif pour simuler une donnée suivant la loi binomiale pour 271 malade avec un taux de létalité de 20%. Nous obtenons ici 52 morts virtuels. 
+
+Nous constatons donc que cette donnée simulée ne correpond pas à nos données réelles, nous ne conservons donc pas cette première simulation.
+
+Dans ce cas, me direz vous, pourquoi avoir fait tout cela !!!
+
+Et bien tout simplement parce que nous allons répéter cette opération un très grand nombre de fois, disons 10000000 !!
+
+regardons ce que cela donne pour un autre tirage de taux : 
+<center>
+![](D:/Jonathan\Lescot\Projets\GT_Statistiques\Bayesianism\Bayesian_Statistics\BDA_fr_tuto\ABC_step_1_2.png)
+</center>
+Cette fois le hasard à voulu que nous tirions un taux de 0.02%, notre modèle génératif a produit une donnée simulée de 1 mort pour 271 cas virtuels. Cette donnée simulée correspond à notre donnée réelle, nous concervons donc ce tirage de taux.
+
+En répétant cette procédure un très grand nombre de fois nous pouvons simplement compter combien de fois chaque valeur de taux que nous avons tiré au hasard a abouti, quand il a été fourni au modèle génératif à des données simulées identiques à nos données réelles.
+
+<center>
+![](D:/Jonathan\Lescot\Projets\GT_Statistiques\Bayesianism\Bayesian_Statistics\BDA_fr_tuto\ABC_n_step.png)
+</center>
+
+### Implémentation du prior
+
+En pratique on procède d'abord au tirage des 10000000 de valeurs de taux
+
+Nous avons défini un Prior non informé, pour lequel chaque taux de létalité peut être équiprobablement situé entre 0 et 100%, nous pouvons l'implémenter comme suit : 
+
+```{r}
+nb_tirages <- 10000000
+prior <- runif(n=nb_tirages, min=0, max=1)
+```
+
+Dans cette ligne de code, nous créons une liste appelée _prior_ dans laquelle nous plaçons les résultats des 10000000 de tirages de valeurs comprises entre 0 et 1 (1 équivalant à 100%).
+
+Nous pouvons l'illustrer graphiquement ainsi :
+```{r}
+hist(prior, xlim=c(0,1), ylim=c(0,600000), 
+     main="A Priori", xlab="Taux de létalité", 
+     ylab="Fréquence", col="grey")
+```
+
+Nous constatons bien sur cet histogramme que chaque valeur de taux de létalité est tirée en quantité quasi-égale.
+
+
+### Implémentation du modèle génératif
+
+Ensuite on fournit toutes ces valeurs de taux au modèle génératif. 
+
+Implémentons d'abord celui-ci
+
+```{r}
+modele_generatif <- function(taux, nb_cas) {
+  nb_morts <- rbinom(1, size = nb_cas, prob = taux)
+  nb_morts
+}
+```
+Cette fonction très simple prend en entrée le taux de létalité et le nombre de cas pour lequel on doit générer des données de nombre de morts. 
+En sortie, elle retourne le nombre de morts simulés.
+
+### Simulation des données 
+
+Nous pouvons donc maintenant fournir tous nos tirages de taux au modèle génératif afin qu'il produise les données simulées : 
+
+```{r}
+data_cas = 271
+morts_simu <- rep(NA, nb_tirages)
+for(i in 1:nb_tirages) {
+  morts_simu[i] <- modele_generatif(taux = prior[i], nb_cas = data_cas)
+}
+```
+
+Ce petit morceau de code produit la liste des 1000000 données simulées. 
+
+Nous allons donc pouvoir filtrer ces données pour ne conserver que celles qui corresondent à notre donnée réelle : 1 décès.
+
+```{r}
+posterior <- prior[morts_simu == 1]
+```
+
+Nous obtenons une liste de toutes les valeurs de taux qui parmi les 10000000 valeurs équiprobables tirées de notre distribution Prior ont abouti, lorsqu'elles ont été fournies au modèle génératif, à des données correpondantes à notre donnée de létalité pour le jour 1.
+
+Nous devons vérifier que ce nombre de données simulées correspondant à nos donnés réelles soit suffisant.
+```{r}
+length(posterior)
+```
+
+Cette liste n'est autre que notre distribution des taux a posteriori.
+Nous pouvons la représenter au moyen de l'histogramme suivant
+
+```{r}
+hist(posterior,  breaks=40, axes=F,
+     main="A posteriori", xlab="Taux de létalité", 
+     ylab="Fréquence", col=rgb(0,1,0,0.5))
+axis(2)
+axis(1, at=seq(0, 0.05, 0.001))
+```
+
+Nous pouvons à partir de cette distribution faire une estimation descriptive de l'intervalle de taux de létalité dans lequel se trouve 95% des taux de létalité qui ont été à l'origine de données simulées compatibles avec les notres et qui ont la plus grande fréquence d'apparition.
+
+Techniquement cet intervalle traduit ce qui est appelé **Intervalle de crédence à 95%**
+
+```{r}
+quantile(posterior, c(0.025, 0.5, 0.975))
+mean(posterior)
+```
+
+On constate ainsi que 95% des taux qui ont produit des données compatibles se situent dans la fourchette de 0.08% et 2% avec un taux médian de 0.6% et un taux moyen de 0.7% 
+
+
+L'apport de nos données ont donc très clairement modifié notre vision du taux de létalité potentiel de la maladie. Nous sommes passé d'une situation où ce taux pouvait équiprobablement prendre n'importe quelle valeur entre 0 et 100% à une valeur possiblement comprise entre 0.08% et 2% en considérant nos données au jour 1.
+
+La figure suivante représente notre passage du prior au posterior (attention les échelles des deux histogrammes sont très différentes ici) 
+
+<center>
+![Inférence Bayésienne](D:/Jonathan\Lescot\Projets\GT_Statistiques\Bayesianism\Bayesian_Statistics\BDA_fr_tuto\Bayesian_inference.png)
+</center>
+
+## Faire des prédictions 
+
+Nous disposons maintenant d'une distribution de fréquence de valeur de taux de létalité qui sont susceptible d'avoir été à l'origine de nos données. 
+
+Pouvons faire des prédictions à partir de cette information ?
+
+Imaginons que nous souhaitions avoir une idée du nombre de morts auquel on pourrait s'attendre en cas de découverte de 1000 nouveaux malades.
+
+La particularité de notre approche est que nous n'allons pas obtenir une valeur fixe mais une distribution de valeurs possibles. 
+
+Pour cela nous allons réutiliser notre modèle génératif, à la différence près que cette fois nous allons lui founrir notre distribution de taux Posterior
+
+```{r}
+morts_predict <- rbinom(n = length(posterior), size = 1000, prob = posterior)
+
+hist(morts_predict, breaks=150, 
+     main="Prédiction décès", xlab="Nombre de morts", 
+     ylab="Fréquence", col=rgb(0,0,1,0.5))
+
+quantile(morts_predict, c(0.025, 0.5, 0.975))
+```
+
+Nous constatons que sur la base des données du jour 1 que nous avons à notre disposition, et de la distribution de fréquence de taux de létalité que nous avons établi par inférence bayésienne, nous pourrions nous attendre à un nombre de morts compris entre 0 et une cinquantaine de morts avec une médiane de 6 décès en cas de découverte de 1000 nouveaux malades.
+
+### Prudence
+
+Cette prédiction est intéressante mais n'est-il pas un peu risqué de nous hasarder à des prédictions alors que nos estimations ne sont basées que sur la prise en compte des informations issue de 271 cas identifiés et 1 mort ?
+
+Bien évidemment la réponse est **oui**, mais notons tout de même que l'approche est intéressante. et qu'elle nous permet de produire des anticipations avec peu de données et surtout, une certaine quantification de l'incertitude.
+
+Avant de commencer à prendre en compte les données des jours suivant, attardons nous quelques temps sur l'effet des données que nous prenons en compte sur le posterior.
+
+## Effet des données prises en compte 
+
+Dans cette section, nous allons prendre un temps pour explorer l'effet des données prises en compte sur la distribution posterior obtenue à partir de notre prior non-informatif. 
+
+Reprenons notre exemple de l'épidémiologue envoyé dans un foyer de MERS-CoV, imaginons qu'il soupçonne qu'il s'agit en fait d'une autre variante du virus dont le taux de létalité est plus grand, disons 50%. Pour cela il envoie 3 de ses collaborateurs dans différents villages du foyer épidémique. Il leur donne pour mission de lui fournir le nombre de malades testés positifs et le nombre de décès enregistrés. Il reçoit les données suivante : 
+
+* Village A : 271 cas et 135 morts
+* village B : 6 cas et 3 morts
+* village C : 10000 cas et 5000 morts
+
+Bien entendu nous ne choisissons pas ces données fictives au hasard. Pour chaque village, 50% des cas sont des décès. Simplement, dans le premier village le nombre de cas est exactement similaire au nombre de cas du jour 1 de nos données Allemandes. Nous allons donc pouvoir apprécier l'effet d'un plus grand nombre de morts sur le posterior par rapport à celui que nous venons d'établir avec les données Allemandes. 
+
+Dans le second village nous allons pouvoir apprécier l'effet, pour un taux de létalité similaire, d'un faible nombre de données. Et enfin dans le dernier village nous allons pouvoir observer l'effet d'un nombre de données très conséquent.
+
+### Village A 
+
+Reprenons le code exécuté précédemment en remplaçant les données du premier jour en Allemagne par les données du village A. Ici toutes les étapes de simulation des données sont les mêmes (morts_simu) seul le filtrage des données simulées est différent : là où nous ne retenions que les données simulées pour lesquelles le nombre de décès était 1 maintenant nous n'allons retenir que les données simulées pour lesquelles le nombre de décès est 135.
+
+```{r}
+posterior_vill_A <- prior[morts_simu == 135]
+
+length(posterior_vill_A)
+```
+
+```{r}
+hist(posterior_vill_A,  breaks=40, axes=T, xlim=c(0, 1), 
+     main="A posteriori Village A", xlab="Taux de létalité", 
+     ylab="Fréquence", col=rgb(0,1,0,0.4))
+```
+
+
+```{r}
+quantile(posterior_vill_A, c(0.025, 0.5, 0.975))
+mean(posterior_vill_A)
+```
+
+Comme Vous pouvez le constater, cette fois, le taux estimé dans le posterior est compris entre 43% et 55%. Nous confirmons donc bien que pour un tirage de nombre de malade identique, le nombre de décès influe correctement sur l'estimation du taux a posteriori
+
+
+Pour rappel voici l'histogramme de la distribution du taux de létalité pour les données du premier jour en Allemagne 
+
+```{r}
+hist(posterior,  breaks=40, axes=T, xlim=c(0, 1), 
+     main="A posteriori (prior uniforme)", xlab="Taux de létalité", 
+     ylab="Fréquence", col=rgb(0,1,0,0.5))
+```
+
+
+Voyons les données pour le village B
+
+### Village B
+
+Cette fois les données à notre disposition sont bien moins nombreuses. Rerprenons le code pour observer l'effet de cette situation particulière.
+
+Cette fois, il nous faut générer de nouvelles données simulées en procédant à un tirage de 6 malades pour chaque taux de la distribution prior.
+
+```{r}
+data_cas = 6
+morts_simu_B <- rep(NA, nb_tirages)
+for(i in 1:nb_tirages) {
+  morts_simu_B[i] <- modele_generatif(taux = prior[i], nb_cas = data_cas)
+}
+```
+
+Nous filtrons les données simulée compatibles (3 morts)
+
+```{r}
+posterior_vill_B <- prior[morts_simu_B == 3]
+
+length(posterior_vill_B)
+```
+
+Voyons l'histogramme de la distribution des taux a posteriori.
+```{r}
+hist(posterior_vill_B,  breaks=50, axes=T, xlim=c(0, 1), 
+     main="A posteriori Village B", xlab="Taux de létalité", 
+     ylab="Fréquence", col=rgb(0,1,0,0.5))
+```
+
+Comparativement au village A notre distribution des taux probables est toujours centrée autour de 50% toutefois, la largeur de la distribution est bien plus grande.
+
+```{r}
+quantile(posterior_vill_B, c(0.025, 0.5, 0.975))
+mean(posterior_vill_B)
+```
+
+Cette fois le taux de létalité a posteriori se situe possiblement entre 18% et 81%. Nous interprétons cette augmentation de l'intervalle de crédence à 95% comme une mesure de l'augmentation de notre incertitude concernant le taux de létalité réel. 
+
+A titre d'ultime comparaison, voyons ce que nous obtenons comme distribution a posteriori avec les données du village C
+
+### Village C
+
+```{r}
+data_cas = 10000
+morts_simu_C <- rep(NA, nb_tirages)
+for(i in 1:nb_tirages) {
+  morts_simu_C[i] <- modele_generatif(taux = prior[i], nb_cas = data_cas)
+}
+```
+
+Nous filtrons les données simulée compatibles (5000 morts)
+
+```{r}
+posterior_vill_C <- prior[morts_simu_C == 5000]
+
+length(posterior_vill_C)
+```
+
+Histogramme de la distribution des taux a posteriori.
+```{r}
+hist(posterior_vill_C,  breaks=25, axes=T, xlim=c(0, 1),
+     main="A posteriori Village C", xlab="Taux de létalité", 
+     ylab="Fréquence", col=rgb(0,1,0,0.5))
+```
+
+```{r}
+quantile(posterior_vill_C, c(0.025, 0.5, 0.975))
+mean(posterior_vill_C)
+```
+
+Nous observons ici, que de données en très grande quantité, ont pour effet de réduire l'intervalle de crédence des taux les plus probables. En d'autres termes, plus nous intégrons de données à notre analyse, moins notre incertitude sera grande. 
+
+
+C'est l'un des grands points forts de l'analyse bayésienne de données, elle permet non seulement d'effectuer des estimations à partir de quantités de données variables même lorsqu'elles sont faibles et de surcroit, elles apportent une information sur l'incertitude associée à cette estimation.
+
+# Allons plus loin
+
+À ce stade nous avons déjà bien avancé. Nous avons découvert les notions de prior et de posterior. Nous avons vu comment intégrer les données à notre analyse au travers de l'algorithme ABC. Nous avons donc pu procéder au passage d'un prior non informé à un posterior en tenant compte des données du premier jour de collecte en Allemagne. Enfin, nous avons vu, au travers d'exemples fictifs, qu'en partant du même prior nous pouvions aboutir à des posteriror différents suivant les données que nous intégrons. Ainsi nous avons pu voir que les données n'influencent pas seulement le taux inféré au travers de l'a posteriori mais également le niveau d'incertitude qui lui est associé.
+
+Nous n'avons jusqu'ici pris en compte que les données du premier jour. Or, vous en conviendrez, faire des estimations poussées à partir de 271 cas et 1 mort c'est un peu hasardeux. Imaginons que nous ayons été brillants et que nous n'ayons pas attendu jusqu'à aujourd'hui pour mettre en place notre algorithme. Supposons que nous l'ayons exécuté dès le premier jour, que faire lorsque l'on reçoit les données de la seconde journée ?
+
+## Le deuxième jour. 
+
+Nous sommes au jour 2 et nous recevons les nouvelles données. Cette fois 802 nouveaux malades ont été détectés et 2 morts parmi eux. Nous pourrions réapliquer notre algorithme exactement de la même manière que pour le premier jour. C'est à dire, repartir de notre a priori non informatif et intégrer les nouvelles données comme pour le premier jour. Mais est-ce un bon choix ? 
+
+Après tout nos premières données nous ont permis d'obtenir une première estimation de la distribution des taux de létalité probables. Pourquoi ne mettrions nous pas à profit ce travail. Pourquoi ne pas utiliser cette nouvelle distribution de probabilité des taux de létalité en la définissant comme notre nouvel a priori !!!
+
+Notre connaissance d'hier devient alors notre a priori d'aujourd'hui.
+
+### Transformer le posterior en prior
+
+Au moment où nous avons défini notre premier prior nous avons décidé qu'il s'étalerait entre 0 et 100% avec une équiprobabilité pour chaque taux. Mathématiquement il s'agit d'une distribution de probabilité dite uniforme. 
+
+Cette distribution est purement mathématique, de fait lors de l'implémentation du prior dans l'algorithme ABC, nous avons généré une liste de 10000000 de valeurs de taux en respectant cette loi mathématique. Notre véritable prior était donc une loi mathématique, que nous avons concrétisée au moyen de la création de cet énorme échantillon. 
+
+À la fin de l'exécution de notre algorithme nous avons obtenu un posterior constitué de la liste des taux qui avaient permis au modèle génératif de simuler des données identiques à nos données réelles. Ce que nous avons donc obtenu et illustré au travers d'histogrammes est un échantillon de valeurs de taux. Bien que pour des raisons pédagogiques nous ayons qualifié cet échantillon de posterior. En réalité il ne s'agit pas du véritable posterior. En effet, le véritable posterior est, comme le prior, une loi de probabilité. Un objet mathématique que nous avons approximé au travers de notre échantillon a posteriori. 
+
+Dans la mesure ou cet échantillon de taux posterior est suffisamment grand, nous pouvons considérer qu'il reflète la loi de probabilité que nous cherchions. 
+
+Pour réutiliser notre posterior en prior il va nous falloir trouver, à partir de cet echantillon posterior, quelle est cette loi de probabilité. Nous pouvons d'ores et déjà constater qu'il ne s'agit plus d'une loi uniforme. L'idéal serait de disposer d'une loi relativement flexible et il se trouve qu'il en existe une qui pourrait convenir : la distribution Beta.
+
+La beta distribution comporte 2 paramètres **α** et **β** dont les valeurs permettent d'adapter la forme de la distribution. 
+
+Un autre avantage de cette distribution est qu'elle est bornée entre 0 et 1. 
+
+Regardons comment créer un échantillon d'1000000 de valeurs suivant cette loi de probabilité et faisons varier les paramètres **α** et **β** pour constater la flexibilité de cette loi.
+
+**α = 1 et β = 1**
+```{r}
+beta_sample <- rbeta(n = 1000000, shape1 = 1, shape2 = 1)
+
+hist(beta_sample, xlim=c(0, 1), 
+     main="Prior α = 1 et β = 1", xlab="Taux de létalité", 
+     ylab="Fréquence", col=rgb(0.7,0.7,0.7,0.5))
+```
+
+Lorsqu'α = 1 et β = 1 la distribution Beta prend la forme d'une distribution uniforme
+
+Essayons d'autres valeurs 
+
+* **α = 1 et β = 5**
+```{r}
+beta_sample <- rbeta(n = 1000000, shape1 = 1, shape2 = 5)
+hist(beta_sample, xlim=c(0, 1), 
+     main="Prior α = 1 et β = 5", xlab="Taux de létalité", 
+     ylab="Fréquence", col=rgb(0.7,0.7,0.7,0.5))
+```
+
+* **α = 45 et β = 55**
+```{r}
+beta_sample <- rbeta(n = 1000000, shape1 = 45, shape2 = 55)
+hist(beta_sample, xlim=c(0, 1), 
+     main="Prior α = 45 et β = 55", xlab="Taux de létalité", 
+     ylab="Fréquence", col=rgb(0.7,0.7,0.7,0.5))
+```
+
+* **α = 7 et β = 3**
+```{r}
+beta_sample <- rbeta(n = 1000000, shape1 = 7, shape2 = 3)
+hist(beta_sample, xlim=c(0, 1),
+     main="Prior α = 7 et β = 3", xlab="Taux de létalité", 
+     ylab="Fréquence", col=rgb(0.7,0.7,0.7,0.5))
+```
+
+* **α = 50 et β = 50**
+```{r}
+beta_sample <- rbeta(n = 1000000, shape1 = 50, shape2 = 50)
+hist(beta_sample, xlim=c(0, 1), 
+     main="Prior α = 50 et β = 50", xlab="Taux de létalité", 
+     ylab="Fréquence", col=rgb(0.7,0.7,0.7,0.5))
+```
+
+Nous avons donc à notre disposition une loi de probabilité dont les coefficients peuvent rendre compte de la distrubution des valeurs de taux posteriori que nous avons pu obtenir. Il nous faut maintenant reprendre notre échantillon de taux a prosteriori et déterminer les valeurs de coefficients **α** et **β** de sorte que nous puissions reprendre notre véritable posterior et le placer en tant que prior mis à jour.
+
+Pour cela nous allons utiliser une fonction d'estimation des paramètres de la loi beta à notre distribution posterior et en récupérer les valeurs.
+
+Cette fonction est fournie par le package EnvStats. 
+La syntaxe est la suivante : 
+
+```{r, warning=FALSE, message=FALSE}
+library(EnvStats)
+beta_model <- ebeta(beta_sample, method = "mle")
+coeff_alpha <- beta_model$parameters[[1]]
+coeff_beta <- beta_model$parameters[[2]]
+```
+
+Dans cet exemple nous essayons de retrouver les coefficients de la dernière distribution beta que nous avons testés : α = 50 et β = 50
+
+Nous obtenons ces coefficients 
+```{r}
+round(coeff_alpha)
+round(coeff_beta)
+```
+
+Tout semble donc bien fonctionner.
+
+Voyons quels sont les coefficients de la distribution beta qui correspondent à notre échantillon de taux posterior
+
+```{r, warning=FALSE}
+post_beta_model <- ebeta(posterior, method = "mle")
+coeff_alpha <- round(post_beta_model$parameters[[1]])
+coeff_beta <- round(post_beta_model$parameters[[2]])
+coeff_alpha
+coeff_beta
+```
+
+Vérifions si la distribution de probabilité beta avec les coefficients trouvés correspond bien à celle que nous avons obtenus dans notre échantillon posterior
+
+```{r}
+new_prior <- rbeta(n = 10000000, shape1 = coeff_alpha, shape2 = coeff_beta)
+hist(new_prior, breaks = 60, axes=F, 
+     main="Prior mis à jour", xlab="Taux de létalité", 
+     ylab="Fréquence", col=rgb(1,0,0,0.5))
+axis(2)
+axis(1, at=seq(0, 0.05, 0.001))
+```
+
+Tout semble donc en ordre !!
+
+Nous avons bien déterminé notre nouveau prior !! 
+
+En procédant à cette vérification nous avons créé un nouvel échantillon de taux conformes à la loi beta de notre nouvel a priori.
+
+## La mise à jour Bayésienne
+
+Nous pouvons maintenant poursuivre la boucle et mettre à jour notre modèle en y intégrant le nouveau prior et les nouvelles données.
+
+### ABC ne suffit pas, passons à JAGS
+
+Nous pourrions recommencer comme nous l'avons fait jusqu'à présent, toutefois, si vous avez essayé de mettre en oeuvre les lignes de codes précédentes, vous vous êtes sans doute apperçu que son exécution prenait beaucoup de temps, voire même beaucoup trop longtemps si votre ordinateur manque un peu de ressources.  
+
+L'algorithme ABC n'est pas du tout efficace du point de vue computationnel, à partir de maintenant, nous allons employer des méthodes plus efficaces et donc plus rapides.
+
+Nous ne nous attarderons pas ici sur le fonctionnement de ces algorithmes, sachez simplement que bien que fonctionnant différemment, ils suivent exactement les mêmes principes que ce que nous avons fait jusqu'à présent.
+
+R n'est pas toujours efficace pour effectuer les simulations dont nous avons besoin, toutefois, il est très pratique pour manipuler et visualiser nos données. Nous allons donc utiliser un autre langage plus adapté que nous allons appeler directement via R.
+
+Il existe de nombreux langages adaptés aux analyses bayésiennes de données. On les appelle communément les langages de programmation probabilistes. Parmi les plus connus on trouve : STAN, JAGS, WEBPPL, PYMC et bien d'autres. 
+
+Nous allons utiliser JAGS mais sachez que n'importe quel autre langage conviendrait tout aussi bien.
+
+#### **Installer JAGS :**
+
+Il vous faudra donc dans un premier temps installer JAGS sur votre ordinateur [lien de téléchargement](https://sourceforge.net/projects/mcmc-jags/files/)
+
+#### **Installer rjags :**
+
+Dans un second temps nous allons installer le package rjags pour pouvoir envoyer des commandes au langage JAGS depuis notre environnement R.
+
+```{r, eval = FALSE}
+install.packages(rjags)
+```
+
+Cette petite adaptation va nous permettre d'aller plus vite sans nous aventurer trop en dehors de notre zone de confort.
+
+### Première mise à jour
+
+Dans un premier temps il nous faut implémenter le modèle en lui indiquant le prior et la loi qui dirige le modèle génératif. Nous avons établi notre distribution prior dans les sections précédentes et nous savons que la distribution de notre modèle génératif est une distribution binomiale.
+
+L'implémentation impose trois étapes :
+
+* La définition du modèle
+* La compilation du modèle
+* La simulation des données
+
+<br><br>
+
+#### **Définition du modèle**
+
+Les portions de code suivantes traduisent la définition du même modèle bayésien que nous avions défini en première partie.
+
+Inutile de vous attarder sur les détails de ce code, l'important est simplement de comprendre qu'il s'agit d'une manière alternative de procéder.
+
+
+```{r, , warning = FALSE, message=FALSE}
+library(rjags)
+
+#DEFINE the model
+covid_model <- "model{
+         # Likelihood model for X
+         X ~ dbin(p, n)
+
+         # Prior model for p
+         p ~ dbeta(a, b)
+        }"
+```
+
+<br><br>
+
+#### **Compilation du modèle**
+
+```{r, , warning = FALSE, message=FALSE}
+# Real Data
+cases <- 802
+deaths <- 2
+
+#COMPILE the model
+covid_jags <- jags.model(textConnection(covid_model), data=list(a=coeff_alpha, b=coeff_beta, X=deaths, n=cases),
+                          inits=list(.RNG.name="base::Wichmann-Hill", .RNG.seed=100))
+```
+
+<br><br>
+
+#### **Simulation des données**
+
+```{r, , warning = FALSE, message=FALSE}
+#SIMULATE the posterior
+covid_sim <- coda.samples(model=covid_jags, 
+                         variable.names=c("p"), 
+                         n.iter= 10000)
+```
+
+<br><br>
+Notre modèle a maintenant été défini, compilé et a produit une simulation.
+
+### Visualisation du posterior
+
+Nous pouvons donc aller droit au but et visualiser la distribution des taux Posterior issue de notre analyse par intégration des données du jour 2.
+
+Pour une meilleure lecture nous avons ajouté la distribution de probabilité du prior en rouge puis superposé la distribution du posterior en vert.
+
+```{r, , warning = FALSE, message=FALSE}
+# Create a df with covid_sim chains and another with the prior
+covid_chains<- data.frame(covid_sim[[1]], iter = 1:10000)
+df_prior_2 <- data.frame(new_prior)
+colnames(df_prior_2)=c("p")
+
+#PLOT the simulated posterior
+ggplot(covid_chains, aes(x = p)) + 
+  geom_density(data=df_prior_2, fill="red", alpha=0.4) +
+  geom_density(fill="green", alpha=0.4) +
+  xlab('Taux de létalité') +
+  ylab('Densité de probabilité') +
+  ggtitle('Prior vs posterior jour 2')+
+  theme(panel.background = element_blank())
+```
+
+Commme vous pouvez le constater, ces nouvelles données ont modifié la distribution de probabilité du taux de létalité. 
+
+Voyons quel est le nouvel intervalle de crédence à 95%
+
+```{r, warning = FALSE, message=FALSE}
+quantile(covid_chains$p, c(0.025, 0.5, 0.975))
+```
+
+Nous pensons donc désormais que le taux de létalité par cas est probablement compris entre 0.09% et 0.8%. 
+
+Nous avons bien procédé à une mise à jour bayésienne de notre a priori puis déterminé le nouveau posterior en incorporant les nouvelle données.
+
+
+### L'effet du prior
+
+Nous avons précédemment consacré un temps à l'étude de l'effet des données sur le postérior lors de l'inférence bayésienne. Mais nous n'avons pas encore pris le temps d'étudier celui du prior. Or maintenant que nous avons mis à jour notre postérior sur la base d'un nouveau prior, il convient de mieux comprendre quel est l'effet de ce prior.
+
+Nous allons donc reprendre notre exemple fictif avec un village D dans lequel les données sont de 50 cas et 25 morts (taux de létalité 50%). Cette fois au lieu de faire varier ces données, nous allons faire varier le prior.
+
+Pour chaque graphique nous affichons en rouge le prior utilisé, en vert le posterior obtenu et en gris les précédents posteriors obtenus avec les précédents priors testés.
+
+Avec un prior non informatif
+
+* **α = 1 et β = 1**
+
+```{r, warning = FALSE, message=FALSE}
+coeff_alpha <- 1
+coeff_beta <- 1
+cases <- 50
+deaths <- 25
+
+
+Vill_D_prior_sample <- rbeta(n = 1000000, shape1 = coeff_alpha, shape2 = coeff_beta)
+
+#DEFINE the model
+vill_D_model <- "model{
+         # Likelihood model for X
+         X ~ dbin(p, n)
+
+         # Prior model for p
+         p ~ dbeta(a, b)
+        }"
+
+#COMPILE the model
+vill_D_jags <- jags.model(textConnection(vill_D_model), data=list(a=coeff_alpha, b=coeff_beta, X=deaths, n=cases),
+                          inits=list(.RNG.name="base::Wichmann-Hill", .RNG.seed=100))
+
+#SIMULATE the posterior
+vill_D_sim <- coda.samples(model=vill_D_jags, 
+                         variable.names=c("p"), 
+                         n.iter= 10000)
+
+# Create a df with covid_sim chains and another with the prior
+vill_D_chains<- data.frame(vill_D_sim[[1]], iter = 1:10000)
+vill_D_prior <- data.frame(Vill_D_prior_sample)
+colnames(vill_D_prior)=c("p")
+
+#PLOT the simulated posterior
+ggplot(vill_D_chains, aes(x = p)) + 
+  geom_density(data=vill_D_prior, fill="red", alpha=0.4) +
+  geom_density(fill="green", alpha=0.4)+
+  xlab('Taux de létalité') +
+  ylab('Densité de probabilité') +
+  ggtitle('Posterior avec un prior non informatif')+
+  theme(panel.background = element_blank())
+
+old_post_vill_D <- vill_D_chains
+```
+
+
+Réitérons cette analyse en prenant différents priors : 
+
+* **α = 1 et β = 5**
+```{r, warning = FALSE, message=FALSE}
+coeff_alpha <- 1
+coeff_beta <- 5
+cases <- 50
+deaths <- 25
+
+
+Vill_D_prior_sample <- rbeta(n = 1000000, shape1 = coeff_alpha, shape2 = coeff_beta)
+vill_D_prior <- data.frame(Vill_D_prior_sample)
+colnames(vill_D_prior)=c("p")
+
+
+#DEFINE the model
+vill_D_model <- "model{
+         # Likelihood model for X
+         X ~ dbin(p, n)
+
+         # Prior model for p
+         p ~ dbeta(a, b)
+        }"
+
+#COMPILE the model
+vill_D_jags <- jags.model(textConnection(vill_D_model), data=list(a=coeff_alpha, b=coeff_beta, X=deaths, n=cases),
+                          inits=list(.RNG.name="base::Wichmann-Hill", .RNG.seed=100))
+
+#SIMULATE the posterior
+vill_D_sim <- coda.samples(model=vill_D_jags, 
+                         variable.names=c("p"), 
+                         n.iter= 10000)
+
+# Create a df with covid_sim chains and another with the prior
+vill_D_chains<- data.frame(vill_D_sim[[1]], iter = 1:10000)
+
+#PLOT the simulated posterior
+ggplot(vill_D_chains, aes(x = p)) + 
+  geom_density(data=vill_D_prior, fill="red", alpha=0.4) +
+  geom_density(data=old_post_vill_D, fill="grey", alpha=0.4) +
+  geom_density(fill="green", alpha=0.4)+
+  xlab('Taux de létalité') +
+  ylab('Densité de probabilité') +
+  ggtitle('Posterior avec un prior α = 1 et β = 5')+
+  theme(panel.background = element_blank())
+
+old_post_vill_D_2 <- vill_D_chains
+```
+
+* **α = 45 et β = 55**
+```{r, warning = FALSE, message=FALSE}
+coeff_alpha <- 45
+coeff_beta <- 55
+cases <- 50
+deaths <- 25
+
+
+Vill_D_prior_sample <- rbeta(n = 1000000, shape1 = coeff_alpha, shape2 = coeff_beta)
+vill_D_prior <- data.frame(Vill_D_prior_sample)
+colnames(vill_D_prior)=c("p")
+
+
+#DEFINE the model
+vill_D_model <- "model{
+         # Likelihood model for X
+         X ~ dbin(p, n)
+
+         # Prior model for p
+         p ~ dbeta(a, b)
+        }"
+
+#COMPILE the model
+vill_D_jags <- jags.model(textConnection(vill_D_model), data=list(a=coeff_alpha, b=coeff_beta, X=deaths, n=cases),
+                          inits=list(.RNG.name="base::Wichmann-Hill", .RNG.seed=100))
+
+#SIMULATE the posterior
+vill_D_sim <- coda.samples(model=vill_D_jags, 
+                         variable.names=c("p"), 
+                         n.iter= 10000)
+
+# Create a df with covid_sim chains and another with the prior
+vill_D_chains<- data.frame(vill_D_sim[[1]], iter = 1:10000)
+
+#PLOT the simulated posterior
+ggplot(vill_D_chains, aes(x = p)) + 
+  geom_density(data=vill_D_prior, fill="red", alpha=0.4) +
+  geom_density(data=old_post_vill_D, fill="grey", alpha=0.2) +
+  geom_density(data=old_post_vill_D_2, fill="grey", alpha=0.4) +
+  geom_density(fill="green", alpha=0.4)+
+  xlab('Taux de létalité') +
+  ylab('Densité de probabilité') +
+  ggtitle('Posterior avec un prior α = 45 et β = 55')+
+  theme(panel.background = element_blank())
+
+old_post_vill_D_3 <- vill_D_chains
+```
+
+* **α = 7 et β = 3**
+```{r, warning = FALSE, message=FALSE}
+coeff_alpha <- 7
+coeff_beta <- 3
+cases <- 50
+deaths <- 25
+
+
+Vill_D_prior_sample <- rbeta(n = 1000000, shape1 = coeff_alpha, shape2 = coeff_beta)
+vill_D_prior <- data.frame(Vill_D_prior_sample)
+colnames(vill_D_prior)=c("p")
+
+
+#DEFINE the model
+vill_D_model <- "model{
+         # Likelihood model for X
+         X ~ dbin(p, n)
+
+         # Prior model for p
+         p ~ dbeta(a, b)
+        }"
+
+#COMPILE the model
+vill_D_jags <- jags.model(textConnection(vill_D_model), data=list(a=coeff_alpha, b=coeff_beta, X=deaths, n=cases),
+                          inits=list(.RNG.name="base::Wichmann-Hill", .RNG.seed=100))
+
+#SIMULATE the posterior
+vill_D_sim <- coda.samples(model=vill_D_jags, 
+                         variable.names=c("p"), 
+                         n.iter= 10000)
+
+# Create a df with covid_sim chains and another with the prior
+vill_D_chains<- data.frame(vill_D_sim[[1]], iter = 1:10000)
+
+#PLOT the simulated posterior
+ggplot(vill_D_chains, aes(x = p)) + 
+  geom_density(data=vill_D_prior, fill="red", alpha=0.4) +
+  geom_density(data=old_post_vill_D, fill="grey", alpha=0.2) +
+  geom_density(data=old_post_vill_D_2, fill="grey", alpha=0.4) +
+  geom_density(data=old_post_vill_D_3, fill="grey", alpha=0.6) +
+  geom_density(fill="green", alpha=0.8)+
+  xlab('Taux de létalité') +
+  ylab('Densité de probabilité') +
+  ggtitle('Posterior avec un prior α = 7 et β = 3')+
+  theme(panel.background = element_blank())
+
+```
+
+Nous constatons ici que les mêmes données ne nous mènent pas au même posterior suivant le prior que nous employons. En effet, le posterior que nous obtenons est une forme de compromis entre le taux de létalité des données et le prior. 
+
+Comme pour la variation de la quantité des données, plus le prior est certain (distribution peu étalée), plus son effet sera fort. C'est à dire que le posterior obtenu sera proche de celui-ci. Ainsi dans une situation où le prior présente une très faible incertitude et les données sont présentes en faible quantité, le posterior sera très proche du prior. À l'opposé, si le prior est très incertain (par ex. prior non informatif) et les données en grande quantité, alors le posterior sera plus proche de la tendance centrale des données. 
+
+Poursuivons maintenant notre analyse.
+
+## Les jours suivants
+
+Certes nous allons un peu plus vite dans notre manière de passer du prior au posterior via cette nouvelle méthode d'implémentation du modèle bayésien, mais nous continuons à avancer pas à pas pour intégrer les nouvelles données quotidiennement.
+
+Nous pourrions systématiser davantage notre démarche en parcourant toute la table de nos données automatiquement. 
+
+### Algorithme itératif
+
+Pour cela nous allons mettre en place une boucle de répétition qui reprend automatiquement toutes les étapes que nous avons vues jusqu'à présent pour chaque ligne du tableau de données.
+
+Pour mieux visualiser le résultat de notre algorithme, nous allons produire pour chaque jour un graphique de la distribution a posteriori.
+
+Dans un premier temps, repartons du début en définissant les coefficients alpha et beta de la distribution a priori à la valeur 1 pour que nous partions d'un prior non informatif. Nous en profitons au passage pour indiquer sur quelle table de données nous souhaitons itérer.
+
+Nous fabriquons aussi une table de données dans laquelle nous stockerons les intervalles de crédences et médiane de chaque distribution posterior.
+
+```{r, warning = FALSE, message=FALSE, eval=FALSE}
+## Empty df for fatality rate update tracing
+rate_df = data.frame(day=integer(), Q25=double(), Q50=double(), Q97=double())
+
+## Bayesian model preparation
+# select the data table used to feed the process
+data_table <- german_data
+
+# Set initial Beta distribution coeffs correponding to a uniform distribution
+coeff_alpha = 1
+coeff_beta = 1
+```
+<br><br>
+
+Puis, implémentons la boucle en charge du calcul itératif du modèle.
+
+Voici une description de la liste des étapes de l'algorithme
+
+1. Récupérer pour chaque ligne de la table de données parcourue, le nombre de cas identifiés et le nombre de décès enregistrés
+2. Définir le modèle pour rjags
+3. Compiler le modèle
+4. Simuler 1000000 paramètres du posterior (Markov Chain Monte Carlo)
+5. Stocker les simulations dans un data frame
+6. Estimer les nouveaux paramètres **α** et **β** de la beta distribution pour la prochaine itération
+7. Calculer et ajouter l'intervale de crédence et la médiane du posterior dans une table 
+8. Créer un graphique traduisant la nouvelle distribution du posterior
+
+À la fin de la boucle nous ajoutons une dernière étape de création du graphique d'évolution de l'intervale de crédence et de la médiane du posterior au fil des jours
+
+<style>
+div.grey { background-color:#C8C8C8; border-radius: 5px; padding: 20px;}
+</style>
+<div class = "grey">
+**Attention**
+Dans la mesure où cet algorithme produit des millions de simulations, il est possible que votre ordinateur soit particulièrement sollicité, en particulier pour la création des graphiques. 
+
+Je vous recommande donc, suivant les données que vous souhaitez utiliser, de diminuer le nombre de simulations. En effet, dans de nombreux cas, il n'est pas nécessaire d'en faire autant.
+</div>
+
+
+```{r, warning = FALSE, message=FALSE, eval=FALSE}
+## Bayesian updating 
+# For loop that iterates on the german-data table and proceed to the modelling steps
+# update the beta distribution to set the daily new priors 
+# and plot everyday death rate parameter probability distribution
+for (row in 1:nrow(data_table)) {
+  
+  # 1. retrieve the cases and deaths daily quantities
+  cases <- data_table[row, "cases"]
+  deaths  <- data_table[row, "deaths"]
+  
+  # 2. Define the model
+  covid_model <- "model{
+              # Likelihood model for X
+              X ~ dbin(p, n)
+
+              # Prior model for p
+              p ~ dbeta(a, b)
+              }"
+  
+  # 3. Compile the model
+  covid_jags <- jags.model(textConnection(covid_model), 
+                           data=list(a=coeff_alpha, 
+                                     b=coeff_beta, 
+                                     X=deaths, 
+                                     n=cases),
+                           inits=list(.RNG.name="base::Wichmann-Hill",
+                                      .RNG.seed=100))
+  
+  # 4. Simulate the posterior
+  covid_sim <- coda.samples(model=covid_jags, 
+                            variable.names=c("p"), 
+                            n.iter= 1000000)
+  
+  # 5. Create a df with covid_sim chain
+  covid_chain<- data.frame(covid_sim[[1]], iter = 1:1000000)
+
+  
+  # 6. Approximate the beta parameters  
+  # (EnvStats package function)
+  coeffs <-  ebeta(covid_chain$p, method = "mle")
+  coeff_alpha <- coeffs$parameters[[1]]
+  coeff_beta <- coeffs$parameters[[2]]
+  
+
+  # 7. Append posterior distribution 2.5%, 50% & 97.5% quantile values to
+  # to fatality rate estimation table
+  day_number=row
+  chain_quant <- quantile(covid_chain$p, c(0.025, 0.5, 0.975))
+  Q2 <- chain_quant[[1]]
+  Q5 <- chain_quant[[2]]
+  Q9 <- chain_quant[[3]]
+  quantile_row <- cbind(day_number, Q2, Q5, Q9)
+  rate_df <- rbind(rate_df, quantile_row)
+  
+  # 8. PLOT the simulated posterior
+  day <- paste("Jour ", row)
+  cas <- paste(cases, "malades")
+  morts <- paste(deaths, "morts")
+  a <- paste("alpha : ", coeff_alpha)
+  b <- paste("beta : ", coeff_beta)
+  plot <- ggplot(covid_chain, aes(x = p)) + 
+              geom_density(fill="green", alpha=0.4, position = "stack")+
+              xlim(0, 0.05) +
+              ylim(0, 6000) +
+              xlab('Taux de létalité') +
+              ylab('Densité') +
+              ggtitle(paste0(day, ", ",cas, ", ",morts, ", ",a, ", ",b))
+  print(plot)
+  file_name <- paste0(path, day, ".png")
+  ggsave(filename = file_name)
+  }
+# End of the loop
+
+
+# 9. Plot the posterior evolution over daily iterations
+ggplot(rate_df, aes(x=rate_df$day, y=rate_df$Q5))+
+  geom_line(aes(x=rate_df$day, y=rate_df$Q9), color="grey")+
+  geom_line(aes(x=rate_df$day, y=rate_df$Q2), color="grey")+
+  geom_ribbon(data=rate_df, 
+              aes(ymin=rate_df$Q2,ymax=rate_df$Q9), 
+                  fill="lightgrey", alpha="0.7")+
+  geom_line()+
+  ylim(0, 0.036) +
+  xlab('Jours') +
+  ylab('Taux de létalité') +
+  ggtitle('Évolution de la distribution posterior du taux de létalité')+
+  theme(panel.background = element_blank())
+ggsave(filename = paste0(path, 'rate_evolution.png'))
+```
+
+### Graphiques de sorties
+
+Voici une animation de quelques un des graphiques produits par l'exécution de l'algorithme. 
+
+![](D:/Jonathan\Lescot\Projets\GT_Statistiques\Bayesianism\Bayesian_Statistics\Covid_update_2020.gif)
+
+
+Ainsi que le graphique d'évolution du taux de létalité estimé a posteriori.
+
+![](D:/Jonathan\Lescot\Projets\GT_Statistiques\Bayesianism\Bayesian_Statistics\rate_evolution.png)
+
+
+### Interprétation 
+
+Nous pouvons faire deux constats principaux sur la base de ces deux représentations grahiques : 
+
+* Dans les premiers jours, l'incertitude concernant le taux de létalité est relativement grande mais diminue au fil du temps.
+
+* Dans les jours suivants, l'incertitude reste globalement d'amplitude similaire mais le taux varie dans le sens d'une augmentation régulière.
+
+
+Le premier constat s'explique en grande partie par le fait que le nombre de cas et le nombre de morts restent faibles dans les premiers jours. 
+
+Le second est plus problématique car il semble que notre procédure ne parvient pas à converger vers un taux de létalité donné. L'une des explications pourrait être liée au fait qu'il y a un délai entre le diagnostic de la maladie et le décès des patients (élément que nous avons volontairement mis de côté au début de notre analyse). Ce délai implique que les chiffres obtenus au début de la phase de croissance de l'épidémie contiennent une proportion plus importante de nouveaux malades que de nouveaux morts. Tous les malades étant récents, le délai pour qu'une fraction d'entre eux décède ne s'est pas encore écoulé. L'inverse se produit au moment de la phase de décrue de l'épidémie. En effet, lors du reflux de l'épisode épidémique, le nombre de nouveaux malades commence par décroître mais n'est pas immédiatement suivi par le nombre de décès qui peut ,temporairement, poursuivre sa croissance ou se stabiliser. À la fin de la vague épidémique on ne constate aucun nouveaux cas, mais une poursuite des décès.
+
+Notre parti pris d'ignorer ce délai nous a donc ici porté préjudice. Pour autant, nous pouvons facilement imaginer des situations dans lesquelles un tel délai n'existe pas et donc dans lesquelles notre stratégie de mise à jour serait valide, comme des situations où des individus seraient amenés à prendre une décision oui / non par exemple.
+
+## Contourner le problème
+
+Une solution très imparfaite pourrait être de cumuler les nouveaux cas et les nouveaux décès sur une période suffisante puis produire une inférence bayésienne sur cet ensemble. 
+
+Tentons rapidement cette solution : 
+
+Nous repartons d'un a priori non informatif et procédons à une seule et unique inférence bayésienne en considérant l'ensemble des cas testés positifs et l'ensemble des décès sur la période comme un unique échantillon.
+
+```{r, , warning = FALSE, message=FALSE}
+coeff_alpha <- 1
+coeff_beta <- 1
+cases <- sum(german_data$cases)
+deaths <- sum(german_data$deaths)
+
+
+prior_sample <- rbeta(n = 1000000, shape1 = coeff_alpha, shape2 = coeff_beta)
+prior_df <- data.frame(p=prior_sample)
+
+#DEFINE the model
+cumul_model <- "model{
+         # Likelihood model for X
+         X ~ dbin(p, n)
+
+         # Prior model for p
+         p ~ dbeta(a, b)
+        }"
+
+#COMPILE the model
+cumul_jags <- jags.model(textConnection(cumul_model), data=list(a=coeff_alpha, b=coeff_beta, X=deaths, n=cases),
+                          inits=list(.RNG.name="base::Wichmann-Hill", .RNG.seed=100))
+
+#SIMULATE the posterior
+cumul_sim <- coda.samples(model=cumul_jags, 
+                         variable.names=c("p"), 
+                         n.iter= 10000)
+
+# Create a df with covid_sim chains and another with the prior
+cumul_chains<- data.frame(cumul_sim[[1]], iter = 1:10000)
+
+#PLOT the simulated posterior
+ggplot(cumul_chains, aes(x = p)) + 
+  geom_density(fill="green", alpha=0.4)+
+  theme(panel.background = element_blank())+  
+  xlab('Taux de létalité') +
+  ylab('Densité de probabilité') +
+  ggtitle('Distribution a posteriori du taux de létalité')
+
+cumul_posterior_quant <- quantile(cumul_chains$p, c(0.025, 0.5, 0.975))
+cumul_posterior_quant
+```
+
+
+## Extrapoler le nombre de cas en France
+
+Nous savons qu'en France, la disponibilité des tests ne permet pas de tester tout cas suspect, les données concernant le nombre de cas sont donc probablement très largement sous évaluées. En revanche, les données relatives au nombre total de décès imputés au virus semblent bien plus fiables. 
+
+Nous pouvons donc partir de notre estimation bayésienne du taux de létalité en Allemagne, utiliser cette distribution de valeurs de taux pour produire une distribution de valeurs probables de cas en France sur la base du nombre de morts rapportés
+
+Commençons par récupérer les données françaises à partir du 15/02/2020 date à laquelle le premier décès associé au SARS-CoV-2 est rapporté.
+
+```{r, out.width = "100%"}
+french_data <- subset(data, data$countriesAndTerritories=="France" & data$dateRep >="2020-02-15")
+french_data <- french_data[order(french_data$dateRep),]
+french_deaths <- sum(french_data$deaths)
+french_deaths
+```
+
+Estimons ensuite la beta distribution des taux probables que nous venons d'estimer pour l'Allemagne
+```{r, out.width = "100%"}
+# Approximate the beta parameters  
+coeffs <-  ebeta(cumul_chains$p, method = "mle")
+coeff_alpha <- coeffs$parameters[[1]]
+coeff_beta <- coeffs$parameters[[2]]
+```
+
+Calculons un échantillon de 1000000 de taux issus de cette distribution
+```{r, out.width = "100%", warning=FALSE, message=FALSE}
+final_rate_sample <- rbeta(n = 1000000, shape1 = coeff_alpha, shape2 = coeff_beta)
+final_rate_df <- data.frame(rate=final_rate_sample*100)
+```
+
+Calculons la distribution du nombre de malades potentiels sur la base de la distribution des taux probables
+
+```{r, out.width = "100%", warning=FALSE, message=FALSE}
+final_rate_df$computed_cases <- (french_deaths*100)/final_rate_df$rate
+
+ggplot(final_rate_df, aes(x = computed_cases)) + 
+  geom_histogram(fill="blue", alpha=0.4, color="white")+
+  theme(panel.background = element_blank())+  
+  xlab('Nombre de malades') +
+  ylab('Densité de probabilité') +
+  ggtitle('Distribution a posteriori du taux de létalité')
+
+computed_cases_quant <- quantile(final_rate_df$computed_cases, c(0.025, 0.5, 0.975))
+computed_cases_quant
+```
+
+Sur la base de la distribution de probabilité de taux de létalité que nous avons estimé au travers des données Allemandes et en faisant l'hypothèse que ce taux est similaire en France, alors nous pouvons estimer, sur la base du nombre de décès, que nous aurions identifié environ 600000 malades en France si nous avions pratiqué la même politique de dépistage que chez nos voisins outre Rhin.
+
+# Conclusion
+
+## Ce qui a été vu et ce qui a été mis de côté
+
+Nous avons ensemble découverts, au travers de ce long document, quels sont les grands principes d'une analyse bayésienne simple.
+
+Le contenu de ce document a fait l'objet de certains choix et arbitrages qui m'ont ammené à favoriser la mise en valeur de certains aspects et à mettre en retrait voire à passer sous silence d'autres aspects dont l'importance ne doit pas être négligée pour autant. 
+
+J'ai par exemple totalement mis de côté, les questions relatives aux diagnostics et vérifications de bonne exécution des algorithmes que nous avons implémentés. Ces diagnostics sont importants, nous les y consacrerons un temps lors d'un prochain tutoriel.
+
+Dans le même ordre d'idée, nous n'avons consacré que très peu de temps aux explications plus mathématisantes concernant la formule de Bayes et sa mise en application. Ces aspects sont également très importants. Je les ai laissé de côté pour trois raisons principales. D'abord, l'aspect mathématique des procédures bayésienne n'est pas mon point fort, ensuite, j'ai estimé qu'explorer plus en détail cet aspect aurait ajouté lourdeur et difficulté à un document déjà relativement long. Enfin, je pense qu'il exite déjà sur la toile un grand nombre de ressources bien conçues à propos de cet aspect.
+
+Ce que nous avons vu ici reste une analyse extrêmement simple ayant pour objectif d'estimer la valeur d'un paramètre unique. Il existe des analyses bien plus complexes proposant l'examen de plusieurs paramètres. Lors du prochain tutoriel nous reprendrons l'analyse que nous avons faite ici pour aborder la question de la comparaison de deux distributions psoterior. 
+
+L'approche bayésienne correspond davantage à un cadre conceptuel qu'en un type d'analyse ou de test statistique particulier. En conséquence, il est possible d'effectuer de nombreuses analyses, modélisations et tests statistiques classiques dans le contexte bayésien. Nous pouvons par exemple penser à la régression linéaire ou multivariée et à bien d'autres analyses très répandues. Il existe souvent des versions bayésiennes de ces analyses. Nous les explorerons dans lors de prochains tutoriaux.
+
+
+## Ressources utiles
+
+Il me faut ici vous suggérer quelques ressources utiles et bien vulgarisées pour compléter cette modeste introduction. 
+
+* Tout d'abord, les vidéos de **_Rasmus Bååth_** ( [vidéo 1](https://youtu.be/3OJEae7Qb_o), [vidéo 2](https://youtu.be/mAUwjSo5TJE), [vidéo 3](https://youtu.be/Ie-6H_r7I5A) ) que j'ai déjà évoquées au début du document. Je recommande également fortement son cours sur le site [Data Camp](https://www.datacamp.com/courses/fundamentals-of-bayesian-data-analysis-in-r).
+
+* Je recommande également le livre de Lê Nguyen Hoang _"La formule du savoir"_ [@Le2018] ainsi que sa [playlist YouTube](https://www.youtube.com/playlist?list=PLtzmb84AoqRQkc4f38dueiPf8YUegsg8n) [@LePlaylist] dédiée à l'approche bayésienne et ayant pour but de compléter le contenu du livre.
+
+
+* Concernant l'histoire du bayésianisme, je recommande l'excellent livre de Sharon McGrayne _"The Theory That Would Not Die: How Bayes' Rule Cracked the Enigma Code, Hunted Down Russian Submarines, and Emerged Triumphant from Two Centuries of Controversy"_ [@McGrayne2012]
+
+Bien d'autres documents pourraient être ajoutés à ces quelques suggestions, 
+
+# Bibliographie
+
+<br><br>
+
+
+```{r, out.width = "100%", echo=FALSE}
+#spanish_data <- subset(data, data$countriesAndTerritories=="Spain" & data$dateRep >="2020-03-01")
+#kable(head(spanish_data))
+
+
+#spanish_data <- spanish_data[order(spanish_data$dateRep),]
+#barplot(spanish_data$cases, names.arg = spanish_data$dateRep,las=2, ylim = c(0, 10000))
+#par(new = TRUE)
+#barplot(spanish_data$deaths, col = 'red', names.arg = spanish_data$dateRep,las=2, ylim = c(0, 10000), axisnames = FALSE)
+```
+
+```{r, out.width = "100%", echo=FALSE}
+#korean_data <- subset(data, data$countriesAndTerritories=="South_Korea" & #data$dateRep >="2020-02-15")
+#kable(head(korean_data))
+
+
+#"korean_data <- korean_data[order(korean_data$dateRep),]
+#barplot(korean_data$cases, names.arg = korean_data$dateRep,las=2, ylim = c(0, 600))
+#par(new = TRUE)
+#barplot(korean_data$deaths, col = 'red', names.arg = #korean_data$dateRep,las=2, ylim = c(0, 600), axisnames = FALSE)
+```
+
+```{r, out.width = "100%", echo=FALSE}
+#mswedish_data <- subset(data, data$countriesAndTerritories=="Sweden" & data$dateRep >="2020-02-15")
+#kable(head(swedish_data))
+
+
+#swedish_data <- swedish_data[order(swedish_data$dateRep),]
+#barplot(swedish_data$cases, names.arg = swedish_data$dateRep,las=2, ylim = c(0, 600))
+#par(new = TRUE)
+#barplot(swedish_data$deaths, col = 'red', names.arg = swedish_data$dateRep,las=2, #ylim = c(0, 600), axisnames = FALSE)
+```
+
+```{r, out.width = "100%", echo=FALSE}
+#finland_data <- subset(data, data$countriesAndTerritories=="Finland" & data$dateRep >="2020-02-15")
+#kable(head(finland_data))
+
+
+#finland_data <- finland_data[order(finland_data$dateRep),]
+#barplot(finland_data$cases, names.arg = finland_data$dateRep,las=2, ylim = c(0, 6500))
+#par(new = TRUE)
+#barplot(finland_data$deaths, col = 'red', names.arg = finland_data$dateRep,las=2, ylim = c(0, 6500), axisnames = FALSE)
+```
+
