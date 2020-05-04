@@ -1,10 +1,10 @@
 ---
 title: "Introduction à l'analyse Bayésienne de données"
 knit: (function(input_file, encoding) {
-  out_dir <- 'docs';
+  out_path <- 'D:/Jonathan/Lescot/Projets/GT_Statistiques/Bayesianism/Bayesian_Statistics/BDA_Tutos/docs';
   rmarkdown::render(input_file,
  encoding=encoding,
- output_file=file.path(dirname(input_file), out_dir, 'index.html'))})
+ output_file=file.path(out_path, 'index.html'))})
 author: "[Jonathan Deniel](https://www.jonathan-deniel.net) - `r format(Sys.time(), '%d %B %Y')`"
 mail: "deniel.jonathan@gmail.com"
 linkedin: "jdeniel"
@@ -626,7 +626,7 @@ Nous n'avons jusqu'ici pris en compte que les données du premier jour. Or, vous
 
 ## Le deuxième jour. 
 
-Nous sommes au jour 2 et nous recevons les nouvelles données. Cette fois 802 nouveaux malades ont été détectés et 2 morts parmi eux. Nous pourrions réapliquer notre algorithme exactement de la même manière que pour le premier jour. C'est à dire, repartir de notre a priori non informatif et intégrer les nouvelles données comme pour le premier jour. Mais est-ce un bon choix ? 
+Nous sommes au jour 2 et nous recevons les nouvelles données. Cette fois 802 nouveaux malades ont été détectés et 2 morts parmi eux. Nous pourrions réappliquer notre algorithme exactement de la même manière que pour le premier jour. C'est à dire, repartir de notre a priori non informatif et intégrer les nouvelles données comme pour le premier jour. Mais est-ce un bon choix ? 
 
 Après tout nos premières données nous ont permis d'obtenir une première estimation de la distribution des taux de létalité probables. Pourquoi ne mettrions nous pas à profit ce travail. Pourquoi ne pas utiliser cette nouvelle distribution de probabilité des taux de létalité en la définissant comme notre nouvel a priori !!!
 
